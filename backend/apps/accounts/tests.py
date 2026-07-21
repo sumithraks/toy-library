@@ -1,26 +1,21 @@
 import pytest
-from django.core import mail
 
 from apps.common.factories import UserFactory
 
 from . import services
-from .models import SingleUseToken, User
+from .models import User
 
 
 @pytest.mark.django_db
 class TestCreateStaffUser:
-    def test_creates_staff_role_with_unusable_password_and_sends_reset_email(self):
-        user = services.create_staff_user("newstaff@example.com", "New", "Staff")
+    def test_creates_staff_role_with_the_given_password(self):
+        user = services.create_staff_user("newstaff@example.com", "startpass123", "New", "Staff")
 
         assert user.role == User.Role.STAFF
         assert user.is_staff is True
         assert user.is_email_verified is True
-        assert user.has_usable_password() is False
-        assert SingleUseToken.objects.filter(
-            user=user, purpose=SingleUseToken.Purpose.PASSWORD_RESET
-        ).exists()
-        assert len(mail.outbox) == 1
-        assert "password" in mail.outbox[0].subject.lower()
+        assert user.has_usable_password() is True
+        assert user.check_password("startpass123") is True
 
 
 @pytest.mark.django_db
@@ -47,6 +42,13 @@ class TestSetStaffRole:
 
         with pytest.raises(ValueError, match="Only STAFF or ADMIN"):
             services.set_staff_role(member, User.Role.ADMIN, admin)
+
+    def test_cannot_change_role_of_a_deactivated_account(self):
+        admin = UserFactory(is_staff=True, role=User.Role.ADMIN)
+        staff = UserFactory(is_staff=True, role=User.Role.STAFF, is_active=False)
+
+        with pytest.raises(ValueError, match="deactivated account"):
+            services.set_staff_role(staff, User.Role.ADMIN, admin)
 
 
 @pytest.mark.django_db

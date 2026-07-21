@@ -306,15 +306,30 @@ class TestAdminUserManagement:
     def test_admin_creates_staff_user(self, admin_client):
         res = admin_client.post(
             "/api/auth/staff/",
-            {"email": "brandnew@example.com", "first_name": "Brand", "last_name": "New"},
+            {
+                "email": "brandnew@example.com",
+                "password": "startpass123",
+                "first_name": "Brand",
+                "last_name": "New",
+            },
         )
 
         assert res.status_code == 201
         assert res.data["role"] == "STAFF"
-        assert len(mail.outbox) == 1
+
+        login_res = admin_client.post(
+            "/api/auth/login/", {"email": "brandnew@example.com", "password": "startpass123"}
+        )
+        assert login_res.status_code == 200
+
+    def test_admin_creates_staff_user_requires_password(self, admin_client):
+        res = admin_client.post("/api/auth/staff/", {"email": "nopassword@example.com"})
+        assert res.status_code == 400
 
     def test_staff_cannot_create_staff_user(self, staff_client):
-        res = staff_client.post("/api/auth/staff/", {"email": "nope@example.com"})
+        res = staff_client.post(
+            "/api/auth/staff/", {"email": "nope@example.com", "password": "startpass123"}
+        )
         assert res.status_code == 403
 
     def test_admin_deactivates_and_reactivates_staff(self, admin_client, staff_user):
@@ -331,6 +346,13 @@ class TestAdminUserManagement:
 
         assert res.status_code == 200
         assert res.data["role"] == "ADMIN"
+
+    def test_admin_cannot_change_role_of_deactivated_staff(self, admin_client, staff_user):
+        admin_client.post(f"/api/auth/staff/{staff_user.id}/deactivate/")
+
+        res = admin_client.post(f"/api/auth/staff/{staff_user.id}/set-role/", {"role": "ADMIN"})
+
+        assert res.status_code == 400
 
     def test_admin_cannot_change_own_role(self, admin_client, admin_user):
         res = admin_client.post(f"/api/auth/staff/{admin_user.id}/set-role/", {"role": "STAFF"})

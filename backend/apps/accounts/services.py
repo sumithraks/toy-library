@@ -6,8 +6,6 @@ from django.db import transaction
 from django.utils import timezone
 from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from apps.notifications.services import notify
-
 from .models import PreAuthToken, SingleUseToken, TwoFactorRecoveryCode, User
 
 
@@ -105,31 +103,17 @@ def change_password(user, current_password, new_password):
     user.save(update_fields=["password"])
 
 
-def create_staff_user(email, first_name="", last_name=""):
+def create_staff_user(email, password, first_name="", last_name=""):
     with transaction.atomic():
         user = User.objects.create_user(
             email=email,
+            password=password,
             first_name=first_name,
             last_name=last_name,
             role=User.Role.STAFF,
             is_staff=True,
             is_email_verified=True,
         )
-        user.set_unusable_password()
-        user.save(update_fields=["password"])
-        token = SingleUseToken.objects.create(
-            user=user,
-            purpose=SingleUseToken.Purpose.PASSWORD_RESET,
-            expires_at=timezone.now() + timezone.timedelta(hours=2),
-        )
-
-    notify(
-        user,
-        event_type="PASSWORD_RESET",
-        title="Set your Toy Library staff password",
-        body="An admin has created a staff account for you. Use the link to set your password.",
-        action_url=f"/password-reset/confirm?token={token.token}",
-    )
     return user
 
 
@@ -138,6 +122,8 @@ def set_staff_role(target_user, new_role, actor):
         raise ValueError("role must be STAFF or ADMIN")
     if target_user.role not in (User.Role.STAFF, User.Role.ADMIN):
         raise ValueError("Only STAFF or ADMIN accounts can have their role changed")
+    if not target_user.is_active:
+        raise ValueError("Cannot change the role of a deactivated account")
     if target_user.pk == actor.pk:
         raise ValueError("You cannot change your own role")
     target_user.role = new_role

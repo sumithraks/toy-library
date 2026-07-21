@@ -67,6 +67,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class CreateStaffSerializer(serializers.Serializer):
     email = serializers.EmailField()
+    password = serializers.CharField(write_only=True, min_length=8)
     first_name = serializers.CharField(required=False, allow_blank=True, default="")
     last_name = serializers.CharField(required=False, allow_blank=True, default="")
 

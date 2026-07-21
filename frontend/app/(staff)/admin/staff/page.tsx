@@ -10,7 +10,7 @@ export default function AdminStaffPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ email: "", first_name: "", last_name: "" });
+  const [form, setForm] = useState({ email: "", password: "", first_name: "", last_name: "" });
 
   const { data } = useQuery({
     queryKey: ["admin-staff-users"],
@@ -28,7 +28,7 @@ export default function AdminStaffPage() {
     setError("");
     try {
       await apiFetch("/auth/staff/", { method: "POST", body: form });
-      setForm({ email: "", first_name: "", last_name: "" });
+      setForm({ email: "", password: "", first_name: "", last_name: "" });
       invalidate();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not create staff account");
@@ -79,6 +79,13 @@ export default function AdminStaffPage() {
           className="w-56 rounded border px-2 py-1 text-sm"
         />
         <input
+          placeholder="Starting password"
+          type="password"
+          value={form.password}
+          onChange={(e) => setForm({ ...form, password: e.target.value })}
+          className="w-40 rounded border px-2 py-1 text-sm"
+        />
+        <input
           placeholder="First name"
           value={form.first_name}
           onChange={(e) => setForm({ ...form, first_name: e.target.value })}
@@ -111,7 +118,7 @@ export default function AdminStaffPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {u.role === "STAFF" && (
+                {u.role === "STAFF" && u.is_active && (
                   <button
                     onClick={() => setRole(u.id, "ADMIN")}
                     className="rounded border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -119,7 +126,7 @@ export default function AdminStaffPage() {
                     Promote to admin
                   </button>
                 )}
-                {u.role === "ADMIN" && u.id !== user?.id && (
+                {u.role === "ADMIN" && u.id !== user?.id && u.is_active && (
                   <button
                     onClick={() => setRole(u.id, "STAFF")}
                     className="rounded border px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
