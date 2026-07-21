@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from freezegun import freeze_time
 
 from apps.common.factories import MembershipFactory, ToyFactory, UserFactory
 from apps.inventory.models import Toy
@@ -71,14 +72,17 @@ class TestExpireReservations:
         assert toy.status == Toy.Status.AVAILABLE
 
     def test_leaves_reservations_within_deadline_untouched(self):
-        toy = ToyFactory()
-        user = UserFactory()
-        reservation = services.create_reservation(toy, user, timezone.now().date())
+        # Frozen well before LIBRARY_CLOSING_TIME so the same-day pickup_deadline
+        # computed by create_reservation is guaranteed to still be in the future.
+        with freeze_time("2026-01-15 09:00:00"):
+            toy = ToyFactory()
+            user = UserFactory()
+            reservation = services.create_reservation(toy, user, timezone.now().date())
 
-        services.expire_reservations()
+            services.expire_reservations()
 
-        reservation.refresh_from_db()
-        assert reservation.status == Reservation.Status.ACTIVE
+            reservation.refresh_from_db()
+            assert reservation.status == Reservation.Status.ACTIVE
 
 
 @pytest.mark.django_db
