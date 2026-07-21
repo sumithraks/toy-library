@@ -16,6 +16,7 @@ const memberLinks = [
 ];
 
 const staffLinks = [
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/admin/inventory", label: "Inventory" },
   { href: "/admin/donations", label: "Donations" },
   { href: "/admin/checkouts", label: "Checkouts" },
@@ -34,7 +35,7 @@ export function Nav() {
   if (!user) return null;
 
   const isStaffOrAdmin = user.role === "STAFF" || user.role === "ADMIN";
-  const links = pathname.startsWith("/admin")
+  const links = isStaffOrAdmin
     ? user.role === "ADMIN"
       ? [...staffLinks, ...adminOnlyLinks]
       : staffLinks
@@ -66,16 +67,6 @@ export function Nav() {
                 {link.label}
               </Link>
             ))}
-            {isStaffOrAdmin && (
-              <Link
-                href="/admin/inventory"
-                className={`hover:text-blue-600 ${
-                  pathname.startsWith("/admin") ? "font-medium text-blue-600" : "text-gray-600"
-                }`}
-              >
-                Staff Console
-              </Link>
-            )}
           </nav>
         </div>
         <div className="flex items-center gap-3 text-sm">
