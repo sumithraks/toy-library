@@ -1,0 +1,27 @@
+I want to build an application that is web as well as mobile enabled. This application is for managing a toy library. The intent behind this application is
+
+User management - sign up, verification, allowing two factor authentication if the user signs up for it. The users will fall into three tier, silver, platinum and diamond. The Silver tier will have a joining fee of $25 and a deposit of $50. The platinum tier will have a joining fee of $35 and deposit of $75 and the diamond tier will have a joining fee of $40 and deposit of $80. The deposit shall be returned upon signing off and discontinuation of the use of the library. When users discontinue, we will also maintain information as to how much of the deposit was returned with a note justifying the reduced deposit amount if that happens. The annual renewal will be 50% of the joining fee for each tier. The users can upgrade or downgrade anytime. 
+
+Inventory management - having a list of toys that the library has, the model, make and the age rating and a description of the toys, whether it is broken or under repair or in the process of intake or whether it is available for rental.
+
+Check out system - 
+Check out system follows the tiered rules as below
+The silver tier users can check out only one toy and can keep it for 2 weeks. A complimentary extension of 2 days will be provided after which they should return the toy.
+The platinum users can check out 2 toys and can keep them for 2 weeks. A complimentary extension of 3 days will be provided after which they should return the toy.
+The diamond users can check out 5 toys and keep them for 3 weeks. A complimentary extension of 5 days will be provided after which they should return the toy.
+The complimentary extension should be explicitly filed.
+A paid extension can be used to extend the toy. The paid extension is 5 cents a day.
+This system keeps track of who checked out the toy, and when the toy should be returned and if a complimentary extension was filed. The complimentary extension depends on the tier. 
+Manage the late fee for the toys that were kept beyond the due date. The late fee is 15 cents per day.
+Waitlist for toys to become available. A notification will be sent once it becomes available. If the user wants to still rent it, he can mark it for pick up. 
+The user can choose a toy from the inventory and say he wants to pick it up on a specific date (within 2 days). The toy’s status will be marked RESERVED. If the user does not pick up the toy, the toy will become available for rental again.  Notification will be sent when they reserve the toy, and another reminder 10 hours before the end of the reservation time. 
+
+Donation management
+Soft toys and dolls are not accepted.
+If the toys were donated, a donation receipt was generated and given to the donor.
+The toys then go through an intake process, describing the toy, the age rating and the general state  of the toy (broken, lightly used etc) before making it available for check out.
+
+Notification system
+Notifies about the upcoming deadline to return the toys.
+ If the user is eligible for complimentary extension, based on the tier, a button to extend the due date is shown. Upon clicking the button, the due is updated. 
+If the user is not eligible for complimentary extension, there is a link to update the due date and pay for the extension
