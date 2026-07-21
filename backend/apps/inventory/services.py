@@ -22,6 +22,7 @@ ALLOWED_TRANSITIONS = {
     Toy.Status.OVERDUE: {
         Toy.Status.AVAILABLE,
         Toy.Status.RESERVED,
+        Toy.Status.CHECKED_OUT,
         Toy.Status.UNDER_REPAIR,
         Toy.Status.BROKEN,
     },
