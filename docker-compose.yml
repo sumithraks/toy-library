@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: toy_library
       POSTGRES_USER: toy_library
-      POSTGRES_PASSWORD: toy_library
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-toy_library}
     ports:
       - "5432:5432"
     volumes:
