@@ -1,6 +1,8 @@
+import threading
 from datetime import timedelta
 
 import pytest
+from django.db import connections
 from django.utils import timezone
 from freezegun import freeze_time
 
@@ -21,6 +23,45 @@ class TestCreateReservation:
 
         with pytest.raises(ValueError, match="cannot be in the past"):
             services.create_reservation(toy, user, timezone.now().date() - timedelta(days=1))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_reservation_attempts_do_not_double_book_the_toy():
+    # Regression test: two near-simultaneous clicks on "Reserve" (e.g. a slow
+    # request plus an impatient second click) used to both pass the
+    # toy.status == AVAILABLE check before either had committed, creating two
+    # Reservations for one toy. create_reservation now locks the toy row with
+    # select_for_update so the second attempt only proceeds once it can see
+    # the first attempt's committed status change.
+    toy = ToyFactory()
+    user_a = UserFactory()
+    user_b = UserFactory()
+    pickup_by = timezone.now().date()
+    barrier = threading.Barrier(2)
+    outcomes = {}
+
+    def attempt(key, user):
+        barrier.wait()
+        try:
+            services.create_reservation(toy, user, pickup_by)
+            outcomes[key] = "ok"
+        except ValueError as exc:
+            outcomes[key] = str(exc)
+        finally:
+            connections.close_all()
+
+    threads = [
+        threading.Thread(target=attempt, args=("a", user_a)),
+        threading.Thread(target=attempt, args=("b", user_b)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert list(outcomes.values()).count("ok") == 1
+    assert any("not available" in outcome for outcome in outcomes.values() if outcome != "ok")
+    assert Reservation.objects.filter(toy=toy, status=Reservation.Status.ACTIVE).count() == 1
 
 
 @pytest.mark.django_db

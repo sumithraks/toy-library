@@ -27,6 +27,7 @@ def create_reservation(toy, user, pickup_by_date, waitlist_entry=None):
     if pickup_by_date < today:
         raise ValueError("pickup_by_date cannot be in the past")
 
+    toy = Toy.objects.select_for_update().get(pk=toy.pk)
     if toy.status != Toy.Status.AVAILABLE:
         raise ValueError("Toy is not available to reserve")
 

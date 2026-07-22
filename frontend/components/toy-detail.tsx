@@ -10,6 +10,7 @@ export function ToyDetail({ toyId }: { toyId: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pickupDate, setPickupDate] = useState("");
+  const [reserving, setReserving] = useState(false);
 
   const { data: toy, isLoading } = useQuery({
     queryKey: ["toy", toyId],
@@ -22,11 +23,13 @@ export function ToyDetail({ toyId }: { toyId: string }) {
   };
 
   const reserve = async () => {
+    if (reserving) return;
     reset();
     if (!pickupDate) {
       setError("Choose a pickup date first");
       return;
     }
+    setReserving(true);
     try {
       await apiFetch("/reservations/", {
         method: "POST",
@@ -36,6 +39,8 @@ export function ToyDetail({ toyId }: { toyId: string }) {
       queryClient.invalidateQueries({ queryKey: ["toy", toyId] });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reserve this toy");
+    } finally {
+      setReserving(false);
     }
   };
 
@@ -81,9 +86,10 @@ export function ToyDetail({ toyId }: { toyId: string }) {
           />
           <button
             onClick={reserve}
-            className="block rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            disabled={reserving}
+            className="block rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Reserve this toy
+            {reserving ? "Reserving…" : "Reserve this toy"}
           </button>
         </div>
       )}
