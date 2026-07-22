@@ -34,7 +34,10 @@ class SignupView(APIView):
     def post(self, request):
         serializer = SignupSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = services.signup(**serializer.validated_data)
+        try:
+            user = services.signup(**serializer.validated_data)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         token = SingleUseToken.objects.filter(
             user=user, purpose=SingleUseToken.Purpose.EMAIL_VERIFICATION
         ).latest("created_at")

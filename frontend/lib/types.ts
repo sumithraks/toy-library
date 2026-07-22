@@ -15,6 +15,7 @@ export type MembershipTier = {
   id: string;
   code: "SILVER" | "PLATINUM" | "DIAMOND";
   name: string;
+  description: string;
   joining_fee: string;
   deposit_amount: string;
   renewal_fee: string;

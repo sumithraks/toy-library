@@ -82,6 +82,15 @@ class MembershipViewSet(
             return Response({"detail": str(exc)}, status=400)
         return Response(MembershipSerializer(membership).data)
 
+    @action(detail=True, methods=["post"])
+    def nudge(self, request, pk=None):
+        membership = self.get_object()
+        try:
+            services.nudge_staff(membership)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(status=204)
+
     @action(detail=True, methods=["post"], url_path="change-tier")
     def change_tier(self, request, pk=None):
         membership = self.get_object()

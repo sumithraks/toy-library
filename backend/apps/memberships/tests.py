@@ -8,6 +8,33 @@ from apps.checkouts import services as checkout_services
 from apps.common.factories import MembershipFactory, MembershipTierFactory, ToyFactory, UserFactory
 from apps.memberships import services
 from apps.memberships.models import Membership, MembershipSignOff
+from apps.notifications.models import NotificationLog
+
+
+@pytest.mark.django_db
+def test_nudge_staff_notifies_all_active_staff():
+    membership = MembershipFactory(status=Membership.Status.PENDING_PAYMENT)
+    active_staff = UserFactory(is_staff=True)
+    inactive_staff = UserFactory(is_staff=True, is_active=False)
+    UserFactory()  # a regular member, should not be notified
+
+    services.nudge_staff(membership)
+
+    notified_user_ids = set(
+        NotificationLog.objects.filter(event_type="MEMBERSHIP_APPROVAL_REQUESTED").values_list(
+            "user_id", flat=True
+        )
+    )
+    assert notified_user_ids == {active_staff.id}
+    assert inactive_staff.id not in notified_user_ids
+
+
+@pytest.mark.django_db
+def test_nudge_staff_rejects_non_pending_membership():
+    membership = MembershipFactory(status=Membership.Status.ACTIVE)
+
+    with pytest.raises(ValueError, match="pending approval"):
+        services.nudge_staff(membership)
 
 
 @pytest.mark.django_db

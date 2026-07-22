@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 
 from apps.common.factories import UserFactory
 
-from .models import SingleUseToken
+from .models import SingleUseToken, User
 
 
 def _totp_code(device, step_offset=0):
@@ -17,10 +17,15 @@ def _totp_code(device, step_offset=0):
 
 @pytest.mark.django_db
 class TestSignup:
-    def test_signup_creates_unverified_user_and_sends_email(self, api_client):
+    def test_signup_creates_unverified_user_and_sends_email(self, api_client, silver_tier):
         res = api_client.post(
             "/api/auth/signup/",
-            {"email": "new@example.com", "password": "testpass123", "first_name": "New"},
+            {
+                "email": "new@example.com",
+                "password": "testpass123",
+                "first_name": "New",
+                "tier_code": "SILVER",
+            },
         )
 
         assert res.status_code == 201
@@ -29,28 +34,60 @@ class TestSignup:
         assert len(mail.outbox) == 1
         assert "verify" in mail.outbox[0].subject.lower()
 
-    def test_signup_rejects_duplicate_email(self, api_client):
+    def test_signup_creates_pending_membership_on_selected_tier(self, api_client, silver_tier):
+        from apps.memberships.models import Membership
+
+        res = api_client.post(
+            "/api/auth/signup/",
+            {"email": "tiered@example.com", "password": "testpass123", "tier_code": "SILVER"},
+        )
+
+        assert res.status_code == 201
+        membership = Membership.objects.get(user__email="tiered@example.com")
+        assert membership.status == Membership.Status.PENDING_PAYMENT
+        assert membership.tier.code == "SILVER"
+
+    def test_signup_rejects_duplicate_email(self, api_client, silver_tier):
         UserFactory(email="dupe@example.com")
 
         res = api_client.post(
-            "/api/auth/signup/", {"email": "dupe@example.com", "password": "testpass123"}
+            "/api/auth/signup/",
+            {"email": "dupe@example.com", "password": "testpass123", "tier_code": "SILVER"},
         )
 
         assert res.status_code == 400
 
-    def test_signup_rejects_short_password(self, api_client):
+    def test_signup_rejects_short_password(self, api_client, silver_tier):
         res = api_client.post(
-            "/api/auth/signup/", {"email": "short@example.com", "password": "abc"}
+            "/api/auth/signup/",
+            {"email": "short@example.com", "password": "abc", "tier_code": "SILVER"},
         )
 
         assert res.status_code == 400
+
+    def test_signup_requires_tier_code(self, api_client):
+        res = api_client.post(
+            "/api/auth/signup/", {"email": "notier@example.com", "password": "testpass123"}
+        )
+
+        assert res.status_code == 400
+
+    def test_signup_rejects_unknown_tier_code_and_does_not_create_user(self, api_client):
+        res = api_client.post(
+            "/api/auth/signup/",
+            {"email": "badtier@example.com", "password": "testpass123", "tier_code": "PLATINUM"},
+        )
+
+        assert res.status_code == 400
+        assert not User.objects.filter(email="badtier@example.com").exists()
 
 
 @pytest.mark.django_db
 class TestVerifyEmail:
-    def test_verify_email_with_valid_token(self, api_client):
+    def test_verify_email_with_valid_token(self, api_client, silver_tier):
         signup_res = api_client.post(
-            "/api/auth/signup/", {"email": "verify@example.com", "password": "testpass123"}
+            "/api/auth/signup/",
+            {"email": "verify@example.com", "password": "testpass123", "tier_code": "SILVER"},
         )
         token = SingleUseToken.objects.get(
             user__email="verify@example.com", purpose=SingleUseToken.Purpose.EMAIL_VERIFICATION
@@ -68,9 +105,10 @@ class TestVerifyEmail:
 
         assert res.status_code == 400
 
-    def test_verify_email_token_cannot_be_reused(self, api_client):
+    def test_verify_email_token_cannot_be_reused(self, api_client, silver_tier):
         api_client.post(
-            "/api/auth/signup/", {"email": "reuse@example.com", "password": "testpass123"}
+            "/api/auth/signup/",
+            {"email": "reuse@example.com", "password": "testpass123", "tier_code": "SILVER"},
         )
         token = SingleUseToken.objects.get(
             user__email="reuse@example.com", purpose=SingleUseToken.Purpose.EMAIL_VERIFICATION

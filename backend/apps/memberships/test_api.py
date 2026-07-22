@@ -4,7 +4,8 @@ import pytest
 
 from apps.billing.models import LedgerEntry
 from apps.checkouts import services as checkout_services
-from apps.common.factories import MembershipFactory, MembershipTierFactory, ToyFactory
+from apps.common.factories import MembershipFactory, MembershipTierFactory, ToyFactory, UserFactory
+from apps.notifications.models import NotificationLog
 
 from .models import Membership
 
@@ -24,6 +25,15 @@ class TestMembershipTiers:
         res = api_client.get("/api/memberships/tiers/")
 
         assert not any(t["code"] == "SILVER" for t in res.data["results"])
+
+    def test_tier_listing_includes_description(self, api_client, silver_tier):
+        silver_tier.description = "Great for first-time members."
+        silver_tier.save(update_fields=["description"])
+
+        res = api_client.get("/api/memberships/tiers/")
+
+        tier = next(t for t in res.data["results"] if t["code"] == "SILVER")
+        assert tier["description"] == "Great for first-time members."
 
 
 @pytest.mark.django_db
@@ -114,6 +124,39 @@ class TestActivate:
     def test_activate_already_active_membership_fails(self, staff_client, active_membership):
         res = staff_client.post(f"/api/memberships/{active_membership.id}/activate/")
         assert res.status_code == 400
+
+
+@pytest.mark.django_db
+class TestNudge:
+    def test_member_can_nudge_staff_about_own_pending_membership(self, member_client, member, silver_tier):
+        membership = MembershipFactory(user=member, tier=silver_tier, status=Membership.Status.PENDING_PAYMENT)
+        staff = UserFactory(is_staff=True)
+
+        res = member_client.post(f"/api/memberships/{membership.id}/nudge/")
+
+        assert res.status_code == 204
+        assert NotificationLog.objects.filter(
+            user=staff, event_type="MEMBERSHIP_APPROVAL_REQUESTED"
+        ).exists()
+
+    def test_member_cannot_nudge_about_someone_elses_membership(self, member_client):
+        other_membership = MembershipFactory(status=Membership.Status.PENDING_PAYMENT)
+
+        res = member_client.post(f"/api/memberships/{other_membership.id}/nudge/")
+
+        assert res.status_code == 404
+
+    def test_nudge_rejects_already_active_membership(self, member_client, active_membership):
+        res = member_client.post(f"/api/memberships/{active_membership.id}/nudge/")
+
+        assert res.status_code == 400
+
+    def test_nudge_requires_authentication(self, api_client, silver_tier):
+        membership = MembershipFactory(tier=silver_tier, status=Membership.Status.PENDING_PAYMENT)
+
+        res = api_client.post(f"/api/memberships/{membership.id}/nudge/")
+
+        assert res.status_code == 401
 
 
 @pytest.mark.django_db

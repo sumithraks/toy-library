@@ -33,10 +33,21 @@ export default function MembershipPage() {
     reset();
     try {
       await apiFetch("/memberships/signup/", { method: "POST", body: { tier_code: tierCode } });
-      setMessage("Signed up! Visit the library to pay your joining fee and deposit, then staff will activate your membership.");
+      setMessage("Signed up! Your membership is awaiting staff approval.");
       refetchMembership();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not sign up");
+    }
+  };
+
+  const nudgeStaff = async () => {
+    if (!membership) return;
+    reset();
+    try {
+      await apiFetch(`/memberships/${membership.id}/nudge/`, { method: "POST" });
+      setMessage("Staff have been notified that you're waiting on approval.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not notify staff");
     }
   };
 
@@ -54,6 +65,20 @@ export default function MembershipPage() {
             <span className="font-medium">{membership.status}</span>
           </p>
           {membership.renewed_through && <p>Renews through {membership.renewed_through}</p>}
+          {membership.status === "PENDING_PAYMENT" && (
+            <div className="mt-3 rounded bg-amber-50 p-3 text-amber-800">
+              <p>
+                Your membership application is awaiting staff approval. Visit the library to pay
+                your joining fee and deposit, and staff will approve and activate it.
+              </p>
+              <button
+                onClick={nudgeStaff}
+                className="mt-2 rounded border border-amber-300 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100"
+              >
+                Nudge staff
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -61,6 +86,7 @@ export default function MembershipPage() {
         {tiers?.results.map((tier) => (
           <div key={tier.id} className="rounded-lg border bg-white p-4">
             <h3 className="font-semibold">{tier.name}</h3>
+            {tier.description && <p className="mt-1 text-sm text-gray-500">{tier.description}</p>}
             <p className="mt-1 text-sm text-gray-500">Joining fee: ${tier.joining_fee}</p>
             <p className="text-sm text-gray-500">Deposit: ${tier.deposit_amount}</p>
             <p className="text-sm text-gray-500">Renewal: ${tier.renewal_fee}/yr</p>

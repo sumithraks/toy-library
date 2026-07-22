@@ -9,7 +9,9 @@ from django_otp.plugins.otp_totp.models import TOTPDevice
 from .models import PreAuthToken, SingleUseToken, TwoFactorRecoveryCode, User
 
 
-def signup(email, password, first_name="", last_name="", phone_number=""):
+def signup(email, password, tier_code, first_name="", last_name="", phone_number=""):
+    from apps.memberships.services import signup_membership
+
     with transaction.atomic():
         user = User.objects.create_user(
             email=email,
@@ -18,6 +20,7 @@ def signup(email, password, first_name="", last_name="", phone_number=""):
             last_name=last_name,
             phone_number=phone_number,
         )
+        signup_membership(user, tier_code)
         issue_email_verification_token(user)
     return user
 

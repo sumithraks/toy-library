@@ -16,6 +16,7 @@ class MembershipTier(TimeStampedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=16, choices=Code.choices, unique=True)
     name = models.CharField(max_length=64)
+    description = models.TextField(blank=True, default="")
     joining_fee = models.DecimalField(max_digits=6, decimal_places=2)
     deposit_amount = models.DecimalField(max_digits=6, decimal_places=2)
     renewal_fee = models.DecimalField(max_digits=6, decimal_places=2)

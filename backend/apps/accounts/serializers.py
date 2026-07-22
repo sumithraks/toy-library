@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.memberships.models import MembershipTier
+
 from .models import User
 
 
@@ -9,6 +11,7 @@ class SignupSerializer(serializers.Serializer):
     first_name = serializers.CharField(required=False, allow_blank=True, default="")
     last_name = serializers.CharField(required=False, allow_blank=True, default="")
     phone_number = serializers.CharField(required=False, allow_blank=True, default="")
+    tier_code = serializers.ChoiceField(choices=MembershipTier.Code.choices)
 
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():

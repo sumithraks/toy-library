@@ -69,6 +69,25 @@ def activate_membership(membership, staff_user):
     return membership
 
 
+def nudge_staff(membership):
+    from apps.accounts.models import User
+    from apps.notifications.services import notify
+
+    if membership.status != Membership.Status.PENDING_PAYMENT:
+        raise ValueError("Only memberships pending approval can be nudged")
+
+    member_name = membership.user.get_full_name()
+    for staff_user in User.objects.filter(is_staff=True, is_active=True):
+        notify(
+            staff_user,
+            event_type="MEMBERSHIP_APPROVAL_REQUESTED",
+            title="Membership awaiting approval",
+            body=f"{member_name} is waiting for their {membership.tier.name} membership to be approved.",
+            action_url="/admin/members",
+        )
+    return membership
+
+
 @transaction.atomic
 def change_tier(membership, new_tier, actor):
     if membership.status != Membership.Status.ACTIVE:

@@ -10,6 +10,7 @@ class MembershipTierSerializer(serializers.ModelSerializer):
             "id",
             "code",
             "name",
+            "description",
             "joining_fee",
             "deposit_amount",
             "renewal_fee",
