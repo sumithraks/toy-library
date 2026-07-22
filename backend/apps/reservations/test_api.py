@@ -56,6 +56,23 @@ class TestListReservations:
 
         assert len(res.data["results"]) == 1
 
+    def test_staff_can_filter_by_status(self, staff_client, active_membership, toy):
+        from apps.common.factories import ToyFactory
+
+        active = create_reservation(
+            toy, active_membership.user, timezone.now().date() + timedelta(days=1)
+        )
+        picked_up = create_reservation(
+            ToyFactory(), active_membership.user, timezone.now().date() + timedelta(days=1)
+        )
+        staff_client.post(f"/api/reservations/{picked_up.id}/confirm-pickup/")
+
+        res = staff_client.get("/api/reservations/?status=ACTIVE")
+
+        ids = {r["id"] for r in res.data["results"]}
+        assert str(active.id) in ids
+        assert str(picked_up.id) not in ids
+
 
 @pytest.mark.django_db
 class TestCancelReservation:

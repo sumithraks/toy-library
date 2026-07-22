@@ -15,15 +15,28 @@ export default function AdminReservationsPage() {
     queryFn: () => apiFetch<Paginated<Reservation>>("/reservations/?status=ACTIVE"),
   });
 
-  const confirmPickup = async (id: string) => {
+  const STATUS_LABELS: Record<Reservation["status"], string> = {
+    ACTIVE: "Active",
+    PICKED_UP: "Picked up",
+    EXPIRED: "Expired",
+    CANCELLED: "Cancelled",
+  };
+
+  const checkOut = async (id: string) => {
     if (confirmingIds.has(id)) return;
     setError("");
     setConfirmingIds((prev) => new Set(prev).add(id));
     try {
-      await apiFetch(`/reservations/${id}/confirm-pickup/`, { method: "POST" });
-      queryClient.invalidateQueries({ queryKey: ["admin-reservations"] });
+      const updated = await apiFetch<Reservation>(`/reservations/${id}/confirm-pickup/`, {
+        method: "POST",
+      });
+      queryClient.setQueryData<Paginated<Reservation>>(["admin-reservations"], (old) =>
+        old
+          ? { ...old, results: old.results.map((r) => (r.id === id ? updated : r)) }
+          : old
+      );
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not confirm pickup");
+      setError(err instanceof ApiError ? err.message : "Could not check out toy");
     } finally {
       setConfirmingIds((prev) => {
         const next = new Set(prev);
@@ -44,6 +57,7 @@ export default function AdminReservationsPage() {
               <th className="p-2">Toy</th>
               <th className="p-2">User</th>
               <th className="p-2">Pickup deadline</th>
+              <th className="p-2">Status</th>
               <th className="p-2"></th>
             </tr>
           </thead>
@@ -53,14 +67,17 @@ export default function AdminReservationsPage() {
                 <td className="p-2 font-mono text-xs">{r.toy}</td>
                 <td className="p-2 font-mono text-xs">{r.user}</td>
                 <td className="p-2">{new Date(r.pickup_deadline).toLocaleString()}</td>
+                <td className="p-2">{STATUS_LABELS[r.status]}</td>
                 <td className="p-2">
-                  <button
-                    onClick={() => confirmPickup(r.id)}
-                    disabled={confirmingIds.has(r.id)}
-                    className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {confirmingIds.has(r.id) ? "Confirming…" : "Confirm pickup"}
-                  </button>
+                  {r.status === "ACTIVE" && (
+                    <button
+                      onClick={() => checkOut(r.id)}
+                      disabled={confirmingIds.has(r.id)}
+                      className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {confirmingIds.has(r.id) ? "Checking out…" : "Check out"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

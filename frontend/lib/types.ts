@@ -107,6 +107,9 @@ export type Reservation = {
   pickup_by_date: string;
   pickup_deadline: string;
   status: "ACTIVE" | "PICKED_UP" | "EXPIRED" | "CANCELLED";
+  picked_up_at: string | null;
+  resulting_checkout: string | null;
+  waitlist_entry: string | null;
 };
 
 export type WaitlistEntry = {
