@@ -2,7 +2,7 @@ import pytest
 
 from apps.common.factories import ToyFactory
 
-from .models import Toy
+from .models import IntakeRecord, Toy
 
 
 @pytest.mark.django_db
@@ -197,3 +197,41 @@ class TestToyGroups:
     def test_groups_requires_authentication(self, api_client):
         res = api_client.get("/api/toys/groups/")
         assert res.status_code == 401
+
+
+@pytest.mark.django_db
+class TestToyIntake:
+    def test_staff_intakes_purchased_toy_and_it_becomes_available(self, staff_client):
+        res = staff_client.post(
+            "/api/toys/intake/",
+            {"model_name": "Train Set", "make": "Acme", "condition": "NEW"},
+        )
+
+        assert res.status_code == 201
+        assert res.data["status"] == "AVAILABLE"
+        assert res.data["source"] == "PURCHASED"
+        toy = Toy.objects.get(id=res.data["id"])
+        record = IntakeRecord.objects.get(toy=toy)
+        assert record.intake_type == "INITIAL_PURCHASE"
+
+    def test_damaged_purchase_marks_toy_broken(self, staff_client):
+        res = staff_client.post(
+            "/api/toys/intake/",
+            {"model_name": "Cracked Puzzle", "make": "Acme", "condition": "DAMAGED"},
+        )
+
+        assert res.status_code == 201
+        assert res.data["status"] == "BROKEN"
+
+    def test_member_cannot_intake_toy(self, member_client):
+        res = member_client.post(
+            "/api/toys/intake/",
+            {"model_name": "Train Set", "make": "Acme", "condition": "NEW"},
+        )
+
+        assert res.status_code == 403
+
+    def test_requires_condition(self, staff_client):
+        res = staff_client.post("/api/toys/intake/", {"model_name": "Train Set", "make": "Acme"})
+
+        assert res.status_code == 400

@@ -31,6 +31,17 @@ class ToyTransitionSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class ToyIntakeSerializer(serializers.Serializer):
+    model_name = serializers.CharField()
+    make = serializers.CharField()
+    condition = serializers.ChoiceField(choices=Toy.Condition.choices)
+    min_age_years = serializers.IntegerField(required=False, allow_null=True, default=None)
+    age_rating_label = serializers.CharField(required=False, allow_blank=True, default="")
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    barcode_or_sku = serializers.CharField(required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class ToyStatusLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToyStatusLog

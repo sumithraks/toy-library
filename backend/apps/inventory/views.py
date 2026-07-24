@@ -9,7 +9,12 @@ from apps.common.permissions import IsStaffOrReadOnly
 from . import services
 from .filters import ToyFilter
 from .models import Toy, ToyStatusLog
-from .serializers import ToySerializer, ToyStatusLogSerializer, ToyTransitionSerializer
+from .serializers import (
+    ToyIntakeSerializer,
+    ToySerializer,
+    ToyStatusLogSerializer,
+    ToyTransitionSerializer,
+)
 
 
 class ToyViewSet(viewsets.ModelViewSet):
@@ -36,6 +41,13 @@ class ToyViewSet(viewsets.ModelViewSet):
             .order_by("make", "model_name")
         )
         return Response(list(groups))
+
+    @action(detail=False, methods=["post"])
+    def intake(self, request):
+        serializer = ToyIntakeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        toy = services.intake_purchased_toy(staff_user=request.user, **serializer.validated_data)
+        return Response(self.get_serializer(toy).data, status=201)
 
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):

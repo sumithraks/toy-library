@@ -148,7 +148,13 @@ export default function AdminInventoryPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ model_name: "", make: "", min_age_years: "", description: "" });
+  const [form, setForm] = useState({
+    model_name: "",
+    make: "",
+    min_age_years: "",
+    description: "",
+    condition: "NEW",
+  });
 
   const { data: groups } = useQuery({
     queryKey: ["admin-toy-groups", filters],
@@ -168,15 +174,15 @@ export default function AdminInventoryPage() {
     e.preventDefault();
     setError("");
     try {
-      await apiFetch("/toys/", {
+      await apiFetch("/toys/intake/", {
         method: "POST",
         body: { ...form, min_age_years: form.min_age_years ? Number(form.min_age_years) : null },
       });
-      setForm({ model_name: "", make: "", min_age_years: "", description: "" });
+      setForm({ model_name: "", make: "", min_age_years: "", description: "", condition: "NEW" });
       setShowForm(false);
       invalidate();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not create toy");
+      setError(err instanceof ApiError ? err.message : "Could not add toy to inventory");
     }
   };
 
@@ -258,11 +264,21 @@ export default function AdminInventoryPage() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="col-span-2 rounded border px-3 py-2 text-sm"
           />
+          <select
+            value={form.condition}
+            onChange={(e) => setForm({ ...form, condition: e.target.value })}
+            className="col-span-2 rounded border px-3 py-2 text-sm"
+          >
+            <option value="NEW">New</option>
+            <option value="LIGHTLY_USED">Lightly used</option>
+            <option value="USED">Used</option>
+            <option value="DAMAGED">Damaged</option>
+          </select>
           <button
             type="submit"
             className="col-span-2 rounded bg-blue-600 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           >
-            Create (starts in INTAKE)
+            Add to inventory
           </button>
         </form>
       )}

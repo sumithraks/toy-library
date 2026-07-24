@@ -55,7 +55,7 @@ def _issue_receipt(donation):
 @transaction.atomic
 def complete_item_intake(donation_item, staff_user, condition, age_rating="", notes=""):
     from apps.inventory.models import IntakeRecord, Toy
-    from apps.inventory.services import transition_toy_status
+    from apps.inventory.services import intake_toy
 
     if donation_item.toy is not None:
         raise ValueError("This donation item already has an associated toy")
@@ -64,29 +64,23 @@ def complete_item_intake(donation_item, staff_user, condition, age_rating="", no
     if donation.status not in (Donation.Status.IN_INTAKE, Donation.Status.ACCEPTED):
         raise ValueError("Donation is not in an intake-eligible state")
 
-    toy = Toy.objects.create(
+    toy = intake_toy(
         model_name=donation_item.model_name or donation_item.item_type,
         make=donation_item.make,
-        age_rating_label=age_rating or donation_item.age_rating,
-        description=donation_item.description,
         condition=condition,
+        intake_type=IntakeRecord.IntakeType.DONATION,
+        staff_user=staff_user,
         source=Toy.Source.DONATED,
         donation=donation,
-        status=Toy.Status.INTAKE,
-    )
-    IntakeRecord.objects.create(
-        toy=toy,
-        intake_type=IntakeRecord.IntakeType.DONATION,
-        assessed_condition=condition,
-        assessed_by=staff_user,
+        age_rating_label=age_rating or donation_item.age_rating,
+        description=donation_item.description,
         notes=notes,
-        completed_at=timezone.now(),
+        reason="Donation intake completed",
     )
+
+    # Track the donation by the toy id that intake_toy just added to inventory.
     donation_item.toy = toy
     donation_item.save(update_fields=["toy", "updated_at"])
-
-    next_status = Toy.Status.BROKEN if condition == Toy.Condition.DAMAGED else Toy.Status.AVAILABLE
-    transition_toy_status(toy, next_status, actor=staff_user, reason="Donation intake completed")
 
     if not donation.items.filter(toy__isnull=True).exists():
         donation.status = Donation.Status.COMPLETED
