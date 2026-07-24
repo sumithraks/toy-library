@@ -235,3 +235,79 @@ class TestToyIntake:
         res = staff_client.post("/api/toys/intake/", {"model_name": "Train Set", "make": "Acme"})
 
         assert res.status_code == 400
+
+
+def _fake_image():
+    from io import BytesIO
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color="red").save(buf, format="JPEG")
+    return SimpleUploadedFile("toy.jpg", buf.getvalue(), content_type="image/jpeg")
+
+
+@pytest.mark.django_db
+class TestToyIdentify:
+    def test_staff_identifies_toy_from_photo(self, staff_client):
+        from unittest.mock import patch
+
+        from apps.inventory.vision import ToyIdentification
+
+        fake_result = ToyIdentification(
+            model_name="Wooden Train Set",
+            make="Acme",
+            condition="LIGHTLY_USED",
+            age_rating_label="3+",
+            description="A wooden train set.",
+        )
+        with patch(
+            "apps.inventory.views.vision.identify_toy_from_image", return_value=fake_result
+        ) as mock_identify:
+            res = staff_client.post(
+                "/api/toys/identify/", {"image": _fake_image()}, format="multipart"
+            )
+
+        assert res.status_code == 200
+        assert res.data["model_name"] == "Wooden Train Set"
+        assert res.data["condition"] == "LIGHTLY_USED"
+        mock_identify.assert_called_once()
+
+    def test_member_cannot_identify_toy(self, member_client):
+        res = member_client.post(
+            "/api/toys/identify/", {"image": _fake_image()}, format="multipart"
+        )
+
+        assert res.status_code == 403
+
+    def test_requires_image(self, staff_client):
+        res = staff_client.post("/api/toys/identify/", {}, format="multipart")
+
+        assert res.status_code == 400
+
+    def test_returns_502_when_identification_fails(self, staff_client):
+        from unittest.mock import patch
+
+        with patch(
+            "apps.inventory.views.vision.identify_toy_from_image",
+            side_effect=RuntimeError("upstream error"),
+        ):
+            res = staff_client.post(
+                "/api/toys/identify/", {"image": _fake_image()}, format="multipart"
+            )
+
+        assert res.status_code == 502
+
+    def test_returns_400_when_not_configured(self, staff_client):
+        from unittest.mock import patch
+
+        with patch(
+            "apps.inventory.views.vision.identify_toy_from_image",
+            side_effect=ValueError("Image identification is not configured"),
+        ):
+            res = staff_client.post(
+                "/api/toys/identify/", {"image": _fake_image()}, format="multipart"
+            )
+
+        assert res.status_code == 400

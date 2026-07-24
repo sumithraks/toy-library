@@ -75,6 +75,14 @@ export type Toy = {
   barcode_or_sku: string | null;
 };
 
+export type ToyIdentification = {
+  model_name: string;
+  make: string;
+  condition: "NEW" | "LIGHTLY_USED" | "USED" | "DAMAGED";
+  age_rating_label: string;
+  description: string;
+};
+
 export type ToyGroup = {
   make: string;
   model_name: string;

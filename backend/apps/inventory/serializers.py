@@ -42,6 +42,10 @@ class ToyIntakeSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class ToyIdentifyImageSerializer(serializers.Serializer):
+    image = serializers.ImageField()
+
+
 class ToyStatusLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ToyStatusLog

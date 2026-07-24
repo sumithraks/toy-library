@@ -159,6 +159,9 @@ VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", default="admin@toylibrary.local")
 # --- Frontend ---
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
 
+# --- Anthropic (toy photo identification) ---
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+
 # --- App-specific business constants ---
 LIBRARY_CLOSING_TIME = "18:00"  # used to derive Reservation.pickup_deadline
 WAITLIST_CLAIM_WINDOW_DAYS = 2

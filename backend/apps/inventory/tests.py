@@ -103,3 +103,39 @@ def test_intake_toy_treats_blank_barcode_as_null():
 
     assert first.barcode_or_sku is None
     assert second.barcode_or_sku is None
+
+
+def test_identify_toy_from_image_requires_api_key(settings):
+    from apps.inventory import vision
+
+    settings.ANTHROPIC_API_KEY = ""
+
+    with pytest.raises(ValueError, match="not configured"):
+        vision.identify_toy_from_image(b"fake-image-bytes")
+
+
+def test_identify_toy_from_image_returns_structured_result(settings):
+    from unittest.mock import patch
+
+    from apps.inventory import vision
+
+    settings.ANTHROPIC_API_KEY = "test-key"
+
+    expected = vision.ToyIdentification(
+        model_name="Wooden Train Set",
+        make="Acme",
+        condition="LIGHTLY_USED",
+        age_rating_label="3+",
+        description="A wooden train set with tracks.",
+    )
+    with patch("apps.inventory.vision.ChatAnthropic") as mock_chat_cls:
+        mock_structured_model = mock_chat_cls.return_value.with_structured_output.return_value
+        mock_structured_model.invoke.return_value = expected
+
+        result = vision.identify_toy_from_image(b"fake-image-bytes", mime_type="image/png")
+
+    assert result == expected
+    mock_chat_cls.return_value.with_structured_output.assert_called_once_with(
+        vision.ToyIdentification
+    )
+    mock_structured_model.invoke.assert_called_once()

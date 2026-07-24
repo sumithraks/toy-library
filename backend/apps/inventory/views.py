@@ -6,10 +6,11 @@ from rest_framework.response import Response
 
 from apps.common.permissions import IsStaffOrReadOnly
 
-from . import services
+from . import services, vision
 from .filters import ToyFilter
 from .models import Toy, ToyStatusLog
 from .serializers import (
+    ToyIdentifyImageSerializer,
     ToyIntakeSerializer,
     ToySerializer,
     ToyStatusLogSerializer,
@@ -48,6 +49,24 @@ class ToyViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         toy = services.intake_purchased_toy(staff_user=request.user, **serializer.validated_data)
         return Response(self.get_serializer(toy).data, status=201)
+
+    @action(detail=False, methods=["post"])
+    def identify(self, request):
+        serializer = ToyIdentifyImageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = serializer.validated_data["image"]
+        try:
+            result = vision.identify_toy_from_image(
+                image.read(), mime_type=image.content_type or "image/jpeg"
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except Exception:
+            return Response(
+                {"detail": "Could not identify the toy from this photo. Enter details manually."},
+                status=502,
+            )
+        return Response(result.model_dump())
 
     @action(detail=True, methods=["post"])
     def transition(self, request, pk=None):

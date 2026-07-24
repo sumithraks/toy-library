@@ -86,7 +86,7 @@ cd backend
 
 ## Configuration
 
-- `backend/.env` (gitignored): `DATABASE_URL`, `CELERY_BROKER_URL`, `EMAIL_BACKEND`, `VAPID_*`, `CORS_ALLOWED_ORIGINS`, `FRONTEND_BASE_URL`. Email defaults to the console backend, so verification/reset/notification emails print to the `runserver` terminal instead of sending for real.
+- `backend/.env` (gitignored): `DATABASE_URL`, `CELERY_BROKER_URL`, `EMAIL_BACKEND`, `VAPID_*`, `CORS_ALLOWED_ORIGINS`, `FRONTEND_BASE_URL`, `ANTHROPIC_API_KEY`. Email defaults to the console backend, so verification/reset/notification emails print to the `runserver` terminal instead of sending for real. `ANTHROPIC_API_KEY` powers the staff "Identify from photo" toy-intake helper; leave it blank to disable that feature (the rest of the app works fine without it).
 - `frontend/.env.local` (gitignored): `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
 
 ## Resetting the database schema

@@ -4,7 +4,7 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "@/lib/api-client";
-import type { CheckoutRecord, Paginated, Toy, ToyGroup } from "@/lib/types";
+import type { CheckoutRecord, Paginated, Toy, ToyGroup, ToyIdentification } from "@/lib/types";
 
 const STATUSES = [
   "INTAKE",
@@ -154,7 +154,10 @@ export default function AdminInventoryPage() {
     min_age_years: "",
     description: "",
     condition: "NEW",
+    age_rating_label: "",
   });
+  const [identifyFile, setIdentifyFile] = useState<File | null>(null);
+  const [identifying, setIdentifying] = useState(false);
 
   const { data: groups } = useQuery({
     queryKey: ["admin-toy-groups", filters],
@@ -178,11 +181,42 @@ export default function AdminInventoryPage() {
         method: "POST",
         body: { ...form, min_age_years: form.min_age_years ? Number(form.min_age_years) : null },
       });
-      setForm({ model_name: "", make: "", min_age_years: "", description: "", condition: "NEW" });
+      setForm({
+        model_name: "",
+        make: "",
+        min_age_years: "",
+        description: "",
+        condition: "NEW",
+        age_rating_label: "",
+      });
+      setIdentifyFile(null);
       setShowForm(false);
       invalidate();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not add toy to inventory");
+    }
+  };
+
+  const identifyFromPhoto = async () => {
+    if (!identifyFile) return;
+    setError("");
+    setIdentifying(true);
+    try {
+      const body = new FormData();
+      body.append("image", identifyFile);
+      const result = await apiFetch<ToyIdentification>("/toys/identify/", { method: "POST", body });
+      setForm({
+        model_name: result.model_name,
+        make: result.make,
+        min_age_years: form.min_age_years,
+        description: result.description,
+        condition: result.condition,
+        age_rating_label: result.age_rating_label,
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not identify toy from photo");
+    } finally {
+      setIdentifying(false);
     }
   };
 
@@ -237,6 +271,22 @@ export default function AdminInventoryPage() {
 
       {showForm && (
         <form onSubmit={createToy} className="grid grid-cols-2 gap-3 rounded-lg border bg-white p-4">
+          <div className="col-span-2 flex items-center gap-2 rounded border border-dashed p-2">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setIdentifyFile(e.target.files?.[0] ?? null)}
+              className="flex-1 text-sm"
+            />
+            <button
+              type="button"
+              onClick={identifyFromPhoto}
+              disabled={!identifyFile || identifying}
+              className="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {identifying ? "Identifying…" : "Identify from photo"}
+            </button>
+          </div>
           <input
             placeholder="Model name"
             required
@@ -256,6 +306,12 @@ export default function AdminInventoryPage() {
             type="number"
             value={form.min_age_years}
             onChange={(e) => setForm({ ...form, min_age_years: e.target.value })}
+            className="rounded border px-3 py-2 text-sm"
+          />
+          <input
+            placeholder="Age rating (e.g. 3+)"
+            value={form.age_rating_label}
+            onChange={(e) => setForm({ ...form, age_rating_label: e.target.value })}
             className="rounded border px-3 py-2 text-sm"
           />
           <input
