@@ -1,7 +1,11 @@
+import logging
+
 from django.db import transaction
 from django.utils import timezone
 
 from .models import IntakeRecord, Toy, ToyStatusLog
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_TRANSITIONS = {
     Toy.Status.INTAKE: {Toy.Status.AVAILABLE, Toy.Status.BROKEN},
@@ -110,7 +114,24 @@ def intake_toy(
     )
     next_status = Toy.Status.BROKEN if condition == Toy.Condition.DAMAGED else Toy.Status.AVAILABLE
     transition_toy_status(toy, next_status, actor=staff_user, reason=reason)
+    embed_toy_description(toy)
     return toy
+
+
+def embed_toy_description(toy):
+    """Best-effort: (re)generate the toy's semantic-search embedding from its
+    description. Never raises -- a Voyage AI outage shouldn't block intake or
+    an edit, it just leaves the toy out of semantic search results until the
+    next successful attempt (e.g. via the backfill_toy_embeddings command)."""
+    if not toy.description:
+        return
+    from .embeddings import embed_text
+
+    try:
+        toy.description_embedding = embed_text(toy.description, input_type="document")
+        toy.save(update_fields=["description_embedding", "updated_at"])
+    except Exception:
+        logger.warning("Failed to generate embedding for toy %s", toy.id, exc_info=True)
 
 
 def intake_purchased_toy(

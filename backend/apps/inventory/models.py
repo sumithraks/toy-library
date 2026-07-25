@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from pgvector.django import VectorField
 
 from apps.common.models import TimeStampedModel
 
@@ -43,6 +44,9 @@ class Toy(TimeStampedModel):
     barcode_or_sku = models.CharField(max_length=64, unique=True, null=True, blank=True)
     retired_at = models.DateTimeField(null=True, blank=True)
     retired_reason = models.TextField(blank=True)
+    # Voyage AI voyage-4-lite embedding of `description`, used for semantic search.
+    # Null until intake (or a later edit) successfully generates one.
+    description_embedding = VectorField(dimensions=1024, null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["model_name"]

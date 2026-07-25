@@ -311,3 +311,89 @@ class TestToyIdentify:
             )
 
         assert res.status_code == 400
+
+
+@pytest.mark.django_db
+class TestToyUpdateRegeneratesEmbedding:
+    def test_updating_description_regenerates_embedding(self, staff_client, toy):
+        from unittest.mock import patch
+
+        fake_vector = [0.3] * 1024
+        with patch("apps.inventory.embeddings.embed_text", return_value=fake_vector) as mock_embed:
+            res = staff_client.patch(f"/api/toys/{toy.id}/", {"description": "Updated text"})
+
+        assert res.status_code == 200
+        mock_embed.assert_called_once_with("Updated text", input_type="document")
+        toy.refresh_from_db()
+        assert list(toy.description_embedding) == fake_vector
+
+    def test_updating_other_fields_does_not_regenerate_embedding(self, staff_client, toy):
+        from unittest.mock import patch
+
+        with patch("apps.inventory.embeddings.embed_text") as mock_embed:
+            res = staff_client.patch(f"/api/toys/{toy.id}/", {"make": "New Make"})
+
+        assert res.status_code == 200
+        mock_embed.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestSemanticSearch:
+    def _set_embedding(self, toy_id, vector):
+        Toy.objects.filter(id=toy_id).update(description_embedding=vector)
+
+    def test_orders_by_similarity(self, member_client):
+        from unittest.mock import patch
+
+        close = ToyFactory(model_name="Close Match", description="wooden train set")
+        far = ToyFactory(model_name="Far Match", description="plastic dinosaur")
+        query_vector = [1.0] + [0.0] * 1023
+        self._set_embedding(close.id, [0.9, 0.1] + [0.0] * 1022)
+        self._set_embedding(far.id, [0.0, 1.0] + [0.0] * 1022)
+
+        with patch("apps.inventory.views.embeddings.embed_text", return_value=query_vector):
+            res = member_client.get("/api/toys/semantic-search/?q=toy+for+toddlers")
+
+        assert res.status_code == 200
+        ids = [t["id"] for t in res.data]
+        assert ids.index(str(close.id)) < ids.index(str(far.id))
+
+    def test_excludes_toys_without_embedding(self, member_client):
+        from unittest.mock import patch
+
+        ToyFactory(description="no embedding yet")
+
+        with patch("apps.inventory.views.embeddings.embed_text", return_value=[0.1] * 1024):
+            res = member_client.get("/api/toys/semantic-search/?q=anything")
+
+        assert res.status_code == 200
+        assert res.data == []
+
+    def test_requires_query_param(self, member_client):
+        res = member_client.get("/api/toys/semantic-search/")
+        assert res.status_code == 400
+
+    def test_requires_authentication(self, api_client):
+        res = api_client.get("/api/toys/semantic-search/?q=toy")
+        assert res.status_code == 401
+
+    def test_returns_400_when_not_configured(self, member_client):
+        from unittest.mock import patch
+
+        with patch(
+            "apps.inventory.views.embeddings.embed_text",
+            side_effect=ValueError("Semantic search is not configured"),
+        ):
+            res = member_client.get("/api/toys/semantic-search/?q=toy")
+
+        assert res.status_code == 400
+
+    def test_returns_502_on_failure(self, member_client):
+        from unittest.mock import patch
+
+        with patch(
+            "apps.inventory.views.embeddings.embed_text", side_effect=RuntimeError("down")
+        ):
+            res = member_client.get("/api/toys/semantic-search/?q=toy")
+
+        assert res.status_code == 502

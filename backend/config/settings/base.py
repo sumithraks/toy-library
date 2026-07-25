@@ -162,6 +162,9 @@ FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
 # --- Anthropic (toy photo identification) ---
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 
+# --- Voyage AI (toy description embeddings / semantic search) ---
+VOYAGE_API_KEY = env("VOYAGE_API_KEY", default="")
+
 # --- App-specific business constants ---
 LIBRARY_CLOSING_TIME = "18:00"  # used to derive Reservation.pickup_deadline
 WAITLIST_CLAIM_WINDOW_DAYS = 2

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, ApiError } from "@/lib/api-client";
 import type { Paginated, Toy } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -19,6 +19,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function BrowsePage() {
   const [filters, setFilters] = useState({ model_name: "", make: "", age: "" });
+  const [descriptionQuery, setDescriptionQuery] = useState("");
+  const [activeDescriptionQuery, setActiveDescriptionQuery] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["toys", filters],
@@ -29,7 +31,33 @@ export default function BrowsePage() {
       if (filters.age) params.set("age", filters.age);
       return apiFetch<Paginated<Toy>>(`/toys/?${params.toString()}`);
     },
+    enabled: !activeDescriptionQuery,
   });
+
+  const {
+    data: semanticResults,
+    isLoading: semanticLoading,
+    error: semanticError,
+  } = useQuery({
+    queryKey: ["toys-semantic-search", activeDescriptionQuery],
+    queryFn: () =>
+      apiFetch<Toy[]>(`/toys/semantic-search/?q=${encodeURIComponent(activeDescriptionQuery)}`),
+    enabled: !!activeDescriptionQuery,
+    retry: false,
+  });
+
+  const runDescriptionSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setActiveDescriptionQuery(descriptionQuery.trim());
+  };
+
+  const clearDescriptionSearch = () => {
+    setDescriptionQuery("");
+    setActiveDescriptionQuery("");
+  };
+
+  const results = activeDescriptionQuery ? semanticResults : data?.results;
+  const loading = activeDescriptionQuery ? semanticLoading : isLoading;
 
   return (
     <div className="space-y-4">
@@ -59,10 +87,41 @@ export default function BrowsePage() {
         </div>
       </div>
 
-      {isLoading && <p className="text-gray-500">Loading…</p>}
+      <form onSubmit={runDescriptionSearch} className="flex flex-wrap gap-2">
+        <input
+          placeholder="Describe what you're looking for, e.g. 'wooden toy that helps with counting'"
+          value={descriptionQuery}
+          onChange={(e) => setDescriptionQuery(e.target.value)}
+          className="min-w-[280px] flex-1 rounded border px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          disabled={!descriptionQuery.trim()}
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Search
+        </button>
+        {activeDescriptionQuery && (
+          <button
+            type="button"
+            onClick={clearDescriptionSearch}
+            className="rounded border px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Clear
+          </button>
+        )}
+      </form>
+
+      {semanticError && (
+        <p className="rounded bg-red-50 p-2 text-sm text-red-700">
+          {semanticError instanceof ApiError ? semanticError.message : "Could not run that search"}
+        </p>
+      )}
+
+      {loading && <p className="text-gray-500">Loading…</p>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {data?.results.map((toy) => (
+        {results?.map((toy) => (
           <Link
             key={toy.id}
             href={`/browse/${toy.id}`}
@@ -81,8 +140,10 @@ export default function BrowsePage() {
           </Link>
         ))}
       </div>
-      {data && data.results.length === 0 && (
-        <p className="text-gray-500">No toys match your filters.</p>
+      {results && results.length === 0 && (
+        <p className="text-gray-500">
+          {activeDescriptionQuery ? "No toys matched that description." : "No toys match your filters."}
+        </p>
       )}
     </div>
   );

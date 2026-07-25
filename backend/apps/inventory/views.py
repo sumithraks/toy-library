@@ -1,12 +1,13 @@
 from django.db.models import Count, Min, Q
 from django_filters.rest_framework import DjangoFilterBackend
+from pgvector.django import CosineDistance
 from rest_framework import filters, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.permissions import IsStaffOrReadOnly
 
-from . import services, vision
+from . import embeddings, services, vision
 from .filters import ToyFilter
 from .models import Toy, ToyStatusLog
 from .serializers import (
@@ -17,6 +18,8 @@ from .serializers import (
     ToyTransitionSerializer,
 )
 
+SEMANTIC_SEARCH_RESULT_LIMIT = 20
+
 
 class ToyViewSet(viewsets.ModelViewSet):
     serializer_class = ToySerializer
@@ -25,6 +28,35 @@ class ToyViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_class = ToyFilter
     search_fields = ["model_name", "make", "description", "barcode_or_sku"]
+
+    def perform_update(self, serializer):
+        description_changed = (
+            "description" in serializer.validated_data
+            and serializer.validated_data["description"] != serializer.instance.description
+        )
+        toy = serializer.save()
+        if description_changed:
+            services.embed_toy_description(toy)
+
+    @action(detail=False, methods=["get"], url_path="semantic-search")
+    def semantic_search(self, request):
+        query = request.query_params.get("q", "").strip()
+        if not query:
+            return Response({"detail": "q query parameter is required"}, status=400)
+        try:
+            query_vector = embeddings.embed_text(query, input_type="query")
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        except Exception:
+            return Response({"detail": "Semantic search is temporarily unavailable."}, status=502)
+
+        qs = (
+            self.filter_queryset(self.get_queryset())
+            .exclude(description_embedding__isnull=True)
+            .annotate(similarity_distance=CosineDistance("description_embedding", query_vector))
+            .order_by("similarity_distance")[:SEMANTIC_SEARCH_RESULT_LIMIT]
+        )
+        return Response(self.get_serializer(qs, many=True).data)
 
     @action(detail=False, methods=["get"])
     def groups(self, request):
