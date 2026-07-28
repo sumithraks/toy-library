@@ -1,3 +1,5 @@
+import logging
+
 from django.db.models import Count, Min, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from pgvector.django import CosineDistance
@@ -17,6 +19,8 @@ from .serializers import (
     ToyStatusLogSerializer,
     ToyTransitionSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 SEMANTIC_SEARCH_RESULT_LIMIT = 20
 
@@ -48,6 +52,7 @@ class ToyViewSet(viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
         except Exception:
+            logger.exception("Semantic search embedding request failed")
             return Response({"detail": "Semantic search is temporarily unavailable."}, status=502)
 
         qs = (
@@ -94,6 +99,7 @@ class ToyViewSet(viewsets.ModelViewSet):
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
         except Exception:
+            logger.exception("Toy photo identification request failed")
             return Response(
                 {"detail": "Could not identify the toy from this photo. Enter details manually."},
                 status=502,

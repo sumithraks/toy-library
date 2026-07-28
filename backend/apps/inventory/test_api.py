@@ -292,12 +292,13 @@ class TestToyIdentify:
         with patch(
             "apps.inventory.views.vision.identify_toy_from_image",
             side_effect=RuntimeError("upstream error"),
-        ):
+        ), patch("apps.inventory.views.logger") as mock_logger:
             res = staff_client.post(
                 "/api/toys/identify/", {"image": _fake_image()}, format="multipart"
             )
 
         assert res.status_code == 502
+        mock_logger.exception.assert_called_once_with("Toy photo identification request failed")
 
     def test_returns_400_when_not_configured(self, staff_client):
         from unittest.mock import patch
@@ -393,7 +394,8 @@ class TestSemanticSearch:
 
         with patch(
             "apps.inventory.views.embeddings.embed_text", side_effect=RuntimeError("down")
-        ):
+        ), patch("apps.inventory.views.logger") as mock_logger:
             res = member_client.get("/api/toys/semantic-search/?q=toy")
 
         assert res.status_code == 502
+        mock_logger.exception.assert_called_once_with("Semantic search embedding request failed")
