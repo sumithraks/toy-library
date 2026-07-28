@@ -13,19 +13,23 @@ push) that drives the due-date/extension/reservation UX.
 │  (React Query)        │◀─────────────────────── │  (Token + Session auth)   │
 └─────────────────────┘                          └────────────┬─────────────┘
                                                                 │
-                                          ┌─────────────────────┼─────────────────────┐
-                                          │                     │                     │
-                                   ┌──────▼──────┐      ┌───────▼───────┐    ┌────────▼────────┐
-                                   │  PostgreSQL  │      │ Celery worker │    │  Celery beat     │
-                                   │              │      │  + Redis      │    │  (schedules)     │
-                                   └──────────────┘      └───────┬───────┘    └──────────────────┘
-                                                                  │
-                                                        ┌─────────▼─────────┐
-                                                        │ Email (console/    │
-                                                        │ SMTP) + Web Push   │
-                                                        │ (pywebpush/VAPID)  │
-                                                        └────────────────────┘
+                          ┌───────────────┬─────────────────────┼─────────────────────┬───────────────┐
+                          │               │                     │                     │               │
+                   ┌──────▼──────┐┌───────▼───────┐    ┌────────▼────────┐   ┌────────▼───────┐┌──────▼──────┐
+                   │ PostgreSQL  ││ Celery worker │    │  Celery beat    │   │ Claude          ││ Voyage AI    │
+                   │ (+ pgvector)││  + Redis      │    │  (schedules)    │   │ (via LangChain) ││ (embeddings) │
+                   └─────────────┘└───────┬───────┘    └─────────────────┘   └─────────────────┘└─────────────┘
+                                            │
+                                  ┌─────────▼─────────┐
+                                  │ Email (console/    │
+                                  │ SMTP) + Web Push   │
+                                  │ (pywebpush/VAPID)  │
+                                  └────────────────────┘
 ```
+
+The API calls Claude (photo → suggested toy fields, staff-only, `ANTHROPIC_API_KEY`) and Voyage AI
+(description → embedding, `VOYAGE_API_KEY`) synchronously and best-effort — both are optional; the
+app works without either key, just without those two features.
 
 ## Backend: Django apps
 
@@ -75,9 +79,12 @@ Ten apps, split by bounded domain rather than model-per-app (`backend/apps/`):
   `renewal_fee` (stored explicitly = 50% of joining_fee at seed time, not derived live so
   historical renewals stay correct if pricing changes), `max_concurrent_checkouts`,
   `loan_period_days`, `complimentary_extension_days`
-- `Membership`: `user`, `tier`, `status` (`PENDING_PAYMENT` / `ACTIVE` / `DISCONTINUED`),
-  `renewed_through`, `deposit_ledger_entry`. `UniqueConstraint` enforces one `ACTIVE`
-  membership per user.
+- `Membership`: `user`, `tier`, `status` (`PENDING_PAYMENT` / `ACTIVE` / `PENDING_TERMINATION` /
+  `DISCONTINUED`), `renewed_through`, `deposit_ledger_entry`. `UniqueConstraint` enforces one
+  `ACTIVE` membership per user. A member selects their tier at signup (`POST /api/auth/signup/`
+  creates the `User` and the `Membership` together, atomically) and starts `PENDING_PAYMENT`;
+  staff activate it in person after collecting the joining fee/deposit. A member can nudge staff
+  for approval (`POST /memberships/{id}/nudge/`) while pending.
 - `MembershipTierChange`: audit trail for upgrade/downgrade, links the deposit-adjustment
   `LedgerEntry`
 - `MembershipSignOff`: discontinuation record — deposit due (snapshotted from the original
@@ -92,7 +99,8 @@ Ten apps, split by bounded domain rather than model-per-app (`backend/apps/`):
 
 **inventory**
 - `Toy`: `status` (INTAKE / AVAILABLE / RESERVED / CHECKED_OUT / OVERDUE / BROKEN /
-  UNDER_REPAIR / RETIRED), `condition`, `source` (PURCHASED / DONATED)
+  UNDER_REPAIR / RETIRED), `condition`, `source` (PURCHASED / DONATED), `description_embedding`
+  (`pgvector` `VectorField`, 1024 dims, nullable — powers semantic search, see below)
 - `ToyStatusLog`: every transition, who triggered it (nullable = system/Celery), why
 - `IntakeRecord`: assessment at donation intake, post-repair, or initial purchase
 
@@ -195,6 +203,49 @@ Implemented in `waitlist.services.claim_next_waitlist_entry`, invoked from
 In-progress checkouts are never affected by a tier change — `CheckoutRecord.membership` is
 snapshotted at checkout time.
 
+### Toy intake (purchased or donated)
+
+`inventory.services.intake_toy` is the single entry point both intake paths funnel through:
+creates the `Toy` row, logs an `IntakeRecord` with the assessed condition, and auto-transitions
+the toy to `AVAILABLE` (or `BROKEN` if received damaged) — all inside one `transaction.atomic()`.
+
+- **Purchased**: `intake_purchased_toy` wraps it with `source=PURCHASED`,
+  `intake_type=INITIAL_PURCHASE` — driven from the staff Inventory "Add toy" form
+  (`POST /toys/intake/`).
+- **Donated**: `donations.services.complete_item_intake` wraps it with `source=DONATED`,
+  `intake_type=DONATION`, and links the resulting `Toy` back onto the `DonationItem`
+  (`donation_item.toy`) — the donation is marked `COMPLETED` once every item has a `Toy`. Staff
+  can override the `model_name`/`make`/`description` captured when the donation was originally
+  submitted (e.g. after re-identifying the item from a photo taken at intake time); omitted
+  fields fall back to what was submitted.
+
+### AI photo identification
+
+Staff can upload a photo of a toy — on the Inventory "Add toy" form, or on either step of
+donation intake (initial submission or "Complete intake") — and get suggested `model_name`,
+`make`, `condition`, and `age_rating_label` values to review before saving. `POST
+/toys/identify/` (staff-only) calls Claude (`claude-sonnet-5`) through `langchain-anthropic`
+with `with_structured_output()` so the response is a validated `ToyIdentification` object, not
+free text to parse. It's a single request/response call, not an agent — no tool use, no loop.
+Best-effort: a failure (missing `ANTHROPIC_API_KEY`, or an upstream error) returns 400/502 with a
+message the UI shows inline; it never blocks manual entry.
+
+### Semantic search over toy descriptions
+
+Members can search the catalog by free-form description (e.g. "wooden toy that helps with
+counting") instead of exact keywords, alongside the existing model/make/age filters.
+
+- `inventory.services.embed_toy_description` embeds a toy's `description` via Voyage AI
+  (`voyage-4-lite`) and stores the vector on `Toy.description_embedding`. Called automatically
+  at the end of `intake_toy` and whenever a toy's `description` is edited
+  (`ToyViewSet.perform_update`). Best-effort and non-blocking, same failure philosophy as photo
+  identification — a Voyage outage never blocks intake or an edit, it just leaves that toy out of
+  semantic search results until the next successful attempt.
+- `GET /toys/semantic-search/?q=<text>` embeds the query text and orders toys by `pgvector`
+  cosine distance (`CosineDistance`, `pgvector.django`), excluding toys with no embedding yet.
+- `manage.py backfill_toy_embeddings` (`--all` to force-regenerate) fills in embeddings for
+  existing toys or retries after an outage.
+
 ## Background jobs — Celery + Celery Beat + Redis
 
 Chosen over cron (no retry/observability/ad-hoc-trigger support) and APScheduler (in-process,
@@ -223,16 +274,18 @@ it for a full token.
 
 ```
 # Auth  (api/auth/)
-POST /signup/  /verify-email/  /login/  /2fa/verify/  /2fa/enroll/  /2fa/confirm/  /2fa/disable/
+POST /signup/  {tier_code, ...}           creates User + PENDING_PAYMENT Membership together
+POST /verify-email/  /login/  /2fa/verify/  /2fa/enroll/  /2fa/confirm/  /2fa/disable/
 POST /password-reset/request/  /password-reset/confirm/
 GET/PATCH /me/
 
 # Memberships  (api/memberships/)
 GET  /tiers/                              (public)
 GET  /me/                                 current user's membership
-POST /signup/                             {tier_code}
+POST /signup/                             {tier_code} -- for re-joining after DISCONTINUED
 GET  /                                    list (own, or all if staff)
 POST /{id}/activate/                      staff-only
+POST /{id}/nudge/                         member -- notify staff about a PENDING_PAYMENT membership
 POST /{id}/change-tier/                   {new_tier_code}
 POST /{id}/signoff/                       staff-only {amount_returned, reason}
 
@@ -242,9 +295,13 @@ POST /{id}/mark-paid/                     staff-only
 
 # Inventory  (api/toys/)
 GET/POST /            (write = staff-only, status read-only)
-PATCH/GET /{id}/
+PATCH/GET /{id}/                          editing `description` re-embeds it for semantic search
 POST /{id}/transition/                    staff-only {new_status, reason}
 GET  /{id}/status-log/
+GET  /groups/                             grouped by (make, model_name), with counts
+POST /intake/                             staff-only -- purchased-toy intake, creates a Toy
+POST /identify/                           staff-only -- photo -> suggested fields (multipart)
+GET  /semantic-search/?q=                 free-text description search via pgvector
 
 # Checkouts  (api/checkouts/)
 GET/POST /             (create = staff-only)
@@ -264,6 +321,9 @@ POST /                                    public (donor may be non-member)
 GET  /                                    staff-only
 POST /{id}/accept/  /{id}/reject/         staff-only
 POST /{id}/items/{item_id}/complete-intake/   staff-only -> creates a Toy
+                                           {condition, age_rating, notes, model_name?, make?,
+                                            description?} -- optional fields override what was
+                                            captured at submission (e.g. from a re-identify photo)
 GET  /{id}/receipt/
 
 # Notifications  (api/)
@@ -282,11 +342,11 @@ requesting another member's resource gets a 404, not a 403.
 
 ```
 app/
-  (auth)/       login, signup, verify-email, 2fa/verify
-  (member)/     dashboard, browse, browse/[toyId], checkouts, reservations,
-                membership, notifications, settings
-  (staff)/      admin/inventory, admin/donations, admin/checkouts,
-                admin/reservations, admin/billing, admin/members
+  (auth)/       login, signup (tier selection), verify-email, 2fa/verify
+  (member)/     dashboard, browse (+ free-text semantic search), browse/[toyId], checkouts,
+                reservations, membership (+ nudge staff), notifications, settings
+  (staff)/      admin/inventory (+ photo identify), admin/donations (+ photo identify),
+                admin/checkouts, admin/reservations, admin/billing, admin/members
   layout.tsx    PWA manifest link
   manifest.ts   PWA manifest
 lib/
@@ -318,9 +378,11 @@ validation, status codes) using the shared fixtures in `backend/conftest.py`
 (`api_client`, `member_client`, `staff_client`, `active_membership`, `toy`, `silver_tier`).
 
 Run with `pytest --cov=apps --cov-report=term-missing` from `backend/`. As of the last run:
-140 tests, 94% statement coverage — the uncovered remainder is Celery task wrappers (thin
+251 tests, 97% statement coverage — the uncovered remainder is Celery task wrappers (thin
 pass-throughs to already-tested service functions) and the network-I/O internals of email/push
-sending.
+sending. Calls to Claude and Voyage AI are mocked in tests (`unittest.mock.patch` on
+`ChatAnthropic` / `voyageai.Client`), so the suite never makes real network requests or needs
+API keys.
 
 ## Known simplifications / not yet built
 
@@ -330,3 +392,6 @@ sending.
   dev only, per the original scope.
 - Web push is verified to work on `localhost`; production will need a real HTTPS domain.
 - No native mobile app — the frontend is a responsive, installable PWA instead.
+- Photo identification and semantic search depend on paid third-party APIs (Anthropic, Voyage
+  AI) with no local/offline fallback — both are optional and the rest of the app doesn't need
+  them, but neither feature works without its API key.
