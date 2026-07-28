@@ -62,6 +62,7 @@ export default function AdminDonationsPage() {
   const [identifyingItemId, setIdentifyingItemId] = useState<string | null>(null);
   const [donorForm, setDonorForm] = useState({ name: "", email: "", phone: "" });
   const [items, setItems] = useState<NewItem[]>([emptyItem()]);
+  const [identifyingNewItemIndex, setIdentifyingNewItemIndex] = useState<number | null>(null);
 
   const getIntakeValues = (item: DonationItem): IntakeValues =>
     intakeForm[item.id] ?? {
@@ -111,6 +112,26 @@ export default function AdminDonationsPage() {
   const addItem = () => setItems([...items, emptyItem()]);
 
   const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
+
+  const identifyNewItemFromPhoto = async (index: number, file: File) => {
+    setError("");
+    setIdentifyingNewItemIndex(index);
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const result = await apiFetch<ToyIdentification>("/toys/identify/", { method: "POST", body });
+      updateItem(index, {
+        model_name: result.model_name,
+        make: result.make,
+        age_rating: result.age_rating_label,
+        description: result.description,
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not identify toy from photo");
+    } finally {
+      setIdentifyingNewItemIndex(null);
+    }
+  };
 
   const createDonation = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,51 +213,67 @@ export default function AdminDonationsPage() {
 
         <div className="space-y-2">
           {items.map((item, index) => (
-            <div key={index} className="flex flex-wrap items-center gap-2">
-              <select
-                value={item.item_type}
-                onChange={(e) => updateItem(index, { item_type: e.target.value })}
-                className="rounded border px-2 py-1 text-xs"
-              >
-                {ITEM_TYPE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                placeholder="Make"
-                value={item.make}
-                onChange={(e) => updateItem(index, { make: e.target.value })}
-                className="w-28 rounded border px-2 py-1 text-xs"
-              />
-              <input
-                placeholder="Model name"
-                value={item.model_name}
-                onChange={(e) => updateItem(index, { model_name: e.target.value })}
-                className="w-32 rounded border px-2 py-1 text-xs"
-              />
-              <input
-                placeholder="Age rating"
-                value={item.age_rating}
-                onChange={(e) => updateItem(index, { age_rating: e.target.value })}
-                className="w-24 rounded border px-2 py-1 text-xs"
-              />
-              <input
-                placeholder="Description"
-                value={item.description}
-                onChange={(e) => updateItem(index, { description: e.target.value })}
-                className="w-40 rounded border px-2 py-1 text-xs"
-              />
-              {items.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeItem(index)}
-                  className="rounded border px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
+            <div key={index} className="space-y-1 rounded border border-dashed p-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) identifyNewItemFromPhoto(index, file);
+                  }}
+                  className="flex-1 text-xs"
+                />
+                {identifyingNewItemIndex === index && (
+                  <span className="text-xs text-gray-500">Identifying…</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={item.item_type}
+                  onChange={(e) => updateItem(index, { item_type: e.target.value })}
+                  className="rounded border px-2 py-1 text-xs"
                 >
-                  Remove
-                </button>
-              )}
+                  {ITEM_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  placeholder="Make"
+                  value={item.make}
+                  onChange={(e) => updateItem(index, { make: e.target.value })}
+                  className="w-28 rounded border px-2 py-1 text-xs"
+                />
+                <input
+                  placeholder="Model name"
+                  value={item.model_name}
+                  onChange={(e) => updateItem(index, { model_name: e.target.value })}
+                  className="w-32 rounded border px-2 py-1 text-xs"
+                />
+                <input
+                  placeholder="Age rating"
+                  value={item.age_rating}
+                  onChange={(e) => updateItem(index, { age_rating: e.target.value })}
+                  className="w-24 rounded border px-2 py-1 text-xs"
+                />
+                <input
+                  placeholder="Description"
+                  value={item.description}
+                  onChange={(e) => updateItem(index, { description: e.target.value })}
+                  className="w-40 rounded border px-2 py-1 text-xs"
+                />
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="rounded border px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           <button
