@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import type { ToyIdentification } from "@/lib/types";
 
 type DonationItem = {
   id: string;
@@ -46,14 +47,55 @@ const emptyItem = (): NewItem => ({
   age_rating: "",
 });
 
+type IntakeValues = {
+  condition: string;
+  age_rating: string;
+  model_name: string;
+  make: string;
+  description: string;
+};
+
 export default function AdminDonationsPage() {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
-  const [intakeForm, setIntakeForm] = useState<Record<string, { condition: string; age_rating: string }>>(
-    {}
-  );
+  const [intakeForm, setIntakeForm] = useState<Record<string, IntakeValues>>({});
+  const [identifyingItemId, setIdentifyingItemId] = useState<string | null>(null);
   const [donorForm, setDonorForm] = useState({ name: "", email: "", phone: "" });
   const [items, setItems] = useState<NewItem[]>([emptyItem()]);
+
+  const getIntakeValues = (item: DonationItem): IntakeValues =>
+    intakeForm[item.id] ?? {
+      condition: "LIGHTLY_USED",
+      age_rating: item.age_rating,
+      model_name: item.model_name,
+      make: item.make,
+      description: item.description,
+    };
+
+  const updateIntakeForm = (item: DonationItem, patch: Partial<IntakeValues>) => {
+    setIntakeForm({ ...intakeForm, [item.id]: { ...getIntakeValues(item), ...patch } });
+  };
+
+  const identifyFromPhoto = async (item: DonationItem, file: File) => {
+    setError("");
+    setIdentifyingItemId(item.id);
+    try {
+      const body = new FormData();
+      body.append("image", file);
+      const result = await apiFetch<ToyIdentification>("/toys/identify/", { method: "POST", body });
+      updateIntakeForm(item, {
+        model_name: result.model_name,
+        make: result.make,
+        condition: result.condition,
+        age_rating: result.age_rating_label,
+        description: result.description,
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not identify toy from photo");
+    } finally {
+      setIdentifyingItemId(null);
+    }
+  };
 
   const { data } = useQuery({
     queryKey: ["admin-donations"],
@@ -104,11 +146,11 @@ export default function AdminDonationsPage() {
     }
   };
 
-  const completeIntake = async (donationId: string, itemId: string) => {
+  const completeIntake = async (donationId: string, item: DonationItem) => {
     setError("");
-    const values = intakeForm[itemId] || { condition: "LIGHTLY_USED", age_rating: "" };
+    const values = getIntakeValues(item);
     try {
-      await apiFetch(`/donations/${donationId}/items/${itemId}/complete-intake/`, {
+      await apiFetch(`/donations/${donationId}/items/${item.id}/complete-intake/`, {
         method: "POST",
         body: values,
       });
@@ -250,46 +292,63 @@ export default function AdminDonationsPage() {
                   </p>
                   <p className="text-gray-500">{item.description}</p>
                   {!item.toy && (donation.status === "IN_INTAKE" || donation.status === "ACCEPTED") && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <select
-                        value={intakeForm[item.id]?.condition || "LIGHTLY_USED"}
-                        onChange={(e) =>
-                          setIntakeForm({
-                            ...intakeForm,
-                            [item.id]: {
-                              ...intakeForm[item.id],
-                              condition: e.target.value,
-                              age_rating: intakeForm[item.id]?.age_rating || "",
-                            },
-                          })
-                        }
-                        className="rounded border px-2 py-1 text-xs"
-                      >
-                        <option value="NEW">New</option>
-                        <option value="LIGHTLY_USED">Lightly used</option>
-                        <option value="USED">Used</option>
-                        <option value="DAMAGED">Damaged</option>
-                      </select>
-                      <input
-                        placeholder="Age rating"
-                        value={intakeForm[item.id]?.age_rating || ""}
-                        onChange={(e) =>
-                          setIntakeForm({
-                            ...intakeForm,
-                            [item.id]: {
-                              condition: intakeForm[item.id]?.condition || "LIGHTLY_USED",
-                              age_rating: e.target.value,
-                            },
-                          })
-                        }
-                        className="w-24 rounded border px-2 py-1 text-xs"
-                      />
-                      <button
-                        onClick={() => completeIntake(donation.id, item.id)}
-                        className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
-                      >
-                        Complete intake
-                      </button>
+                    <div className="mt-2 space-y-2 border-t pt-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) identifyFromPhoto(item, file);
+                          }}
+                          className="flex-1 text-xs"
+                        />
+                        {identifyingItemId === item.id && (
+                          <span className="text-xs text-gray-500">Identifying…</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          placeholder="Model name"
+                          value={getIntakeValues(item).model_name}
+                          onChange={(e) => updateIntakeForm(item, { model_name: e.target.value })}
+                          className="w-32 rounded border px-2 py-1 text-xs"
+                        />
+                        <input
+                          placeholder="Make"
+                          value={getIntakeValues(item).make}
+                          onChange={(e) => updateIntakeForm(item, { make: e.target.value })}
+                          className="w-28 rounded border px-2 py-1 text-xs"
+                        />
+                        <input
+                          placeholder="Description"
+                          value={getIntakeValues(item).description}
+                          onChange={(e) => updateIntakeForm(item, { description: e.target.value })}
+                          className="w-40 rounded border px-2 py-1 text-xs"
+                        />
+                        <select
+                          value={getIntakeValues(item).condition}
+                          onChange={(e) => updateIntakeForm(item, { condition: e.target.value })}
+                          className="rounded border px-2 py-1 text-xs"
+                        >
+                          <option value="NEW">New</option>
+                          <option value="LIGHTLY_USED">Lightly used</option>
+                          <option value="USED">Used</option>
+                          <option value="DAMAGED">Damaged</option>
+                        </select>
+                        <input
+                          placeholder="Age rating"
+                          value={getIntakeValues(item).age_rating}
+                          onChange={(e) => updateIntakeForm(item, { age_rating: e.target.value })}
+                          className="w-24 rounded border px-2 py-1 text-xs"
+                        />
+                        <button
+                          onClick={() => completeIntake(donation.id, item)}
+                          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700"
+                        >
+                          Complete intake
+                        </button>
+                      </div>
                     </div>
                   )}
                   {item.toy && <p className="mt-1 text-xs text-green-600">Added to inventory</p>}

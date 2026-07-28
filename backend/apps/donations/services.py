@@ -53,7 +53,16 @@ def _issue_receipt(donation):
 
 
 @transaction.atomic
-def complete_item_intake(donation_item, staff_user, condition, age_rating="", notes=""):
+def complete_item_intake(
+    donation_item,
+    staff_user,
+    condition,
+    age_rating="",
+    notes="",
+    model_name="",
+    make="",
+    description="",
+):
     from apps.inventory.models import IntakeRecord, Toy
     from apps.inventory.services import intake_toy
 
@@ -64,16 +73,18 @@ def complete_item_intake(donation_item, staff_user, condition, age_rating="", no
     if donation.status not in (Donation.Status.IN_INTAKE, Donation.Status.ACCEPTED):
         raise ValueError("Donation is not in an intake-eligible state")
 
+    # Staff can override the values captured when the donation was submitted --
+    # e.g. after re-identifying the item from a photo taken at intake time.
     toy = intake_toy(
-        model_name=donation_item.model_name or donation_item.item_type,
-        make=donation_item.make,
+        model_name=model_name or donation_item.model_name or donation_item.item_type,
+        make=make or donation_item.make,
         condition=condition,
         intake_type=IntakeRecord.IntakeType.DONATION,
         staff_user=staff_user,
         source=Toy.Source.DONATED,
         donation=donation,
         age_rating_label=age_rating or donation_item.age_rating,
-        description=donation_item.description,
+        description=description or donation_item.description,
         notes=notes,
         reason="Donation intake completed",
     )

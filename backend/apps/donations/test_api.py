@@ -204,3 +204,71 @@ class TestCompleteIntake:
         )
 
         assert res.status_code == 403
+
+    def test_intake_overrides_captured_at_submission(self, api_client, staff_client):
+        submit_res = api_client.post(
+            "/api/donations/",
+            {
+                "donor": {"name": "Jane"},
+                "items": [
+                    {
+                        "item_type": "PUZZLE",
+                        "description": "an old puzzle",
+                        "make": "Unknown",
+                        "model_name": "",
+                        "age_rating": "",
+                    }
+                ],
+            },
+            format="json",
+        )
+        donation_id = submit_res.data["id"]
+        staff_client.post(f"/api/donations/{donation_id}/accept/")
+        item_id = DonationItem.objects.get(donation_id=donation_id).id
+
+        res = staff_client.post(
+            f"/api/donations/{donation_id}/items/{item_id}/complete-intake/",
+            {
+                "condition": "LIGHTLY_USED",
+                "model_name": "500-Piece Landscape Puzzle",
+                "make": "Ravensburger",
+                "age_rating": "8+",
+                "description": "A 500-piece jigsaw puzzle of a mountain landscape.",
+            },
+        )
+
+        assert res.status_code == 201
+        assert res.data["model_name"] == "500-Piece Landscape Puzzle"
+        assert res.data["make"] == "Ravensburger"
+        assert res.data["age_rating_label"] == "8+"
+        assert res.data["description"] == "A 500-piece jigsaw puzzle of a mountain landscape."
+
+    def test_intake_without_overrides_keeps_submitted_values(self, api_client, staff_client):
+        submit_res = api_client.post(
+            "/api/donations/",
+            {
+                "donor": {"name": "Jane"},
+                "items": [
+                    {
+                        "item_type": "PUZZLE",
+                        "description": "an old puzzle",
+                        "make": "Acme",
+                        "model_name": "Puzzle 1",
+                    }
+                ],
+            },
+            format="json",
+        )
+        donation_id = submit_res.data["id"]
+        staff_client.post(f"/api/donations/{donation_id}/accept/")
+        item_id = DonationItem.objects.get(donation_id=donation_id).id
+
+        res = staff_client.post(
+            f"/api/donations/{donation_id}/items/{item_id}/complete-intake/",
+            {"condition": "LIGHTLY_USED"},
+        )
+
+        assert res.status_code == 201
+        assert res.data["model_name"] == "Puzzle 1"
+        assert res.data["make"] == "Acme"
+        assert res.data["description"] == "an old puzzle"

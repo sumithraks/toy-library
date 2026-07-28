@@ -70,6 +70,11 @@ class CompleteIntakeSerializer(serializers.Serializer):
     condition = serializers.ChoiceField(choices=[("NEW", "New"), ("LIGHTLY_USED", "Lightly used"), ("USED", "Used"), ("DAMAGED", "Damaged")])
     age_rating = serializers.CharField(required=False, allow_blank=True, default="")
     notes = serializers.CharField(required=False, allow_blank=True, default="")
+    # Overrides for the values captured when the donation was originally submitted --
+    # e.g. from staff re-identifying the item from a photo taken at intake time.
+    model_name = serializers.CharField(required=False, allow_blank=True, default="")
+    make = serializers.CharField(required=False, allow_blank=True, default="")
+    description = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class DonationReceiptSerializer(serializers.ModelSerializer):
